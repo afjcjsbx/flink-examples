@@ -12,7 +12,7 @@ case class Match(
                   fixture: Fixture = Fixture(),
                   league: League = League(),
                   teams: Teams = Teams(),
-                  goals: Teams = Teams(),
+                  goals: Goals1 = Goals1(),
                   score: Score = Score()/*,
                   events: Seq[Events] = Seq.empty,
                   lineups: Seq[Lineups] = Seq.empty,
@@ -91,10 +91,10 @@ case class Goals(
                 )
 
 case class Home(
-                 id: Int,
-                 name: String,
-                 logo: String,
-                 winner: Boolean
+                 id: Int = 0,
+                 name: String = unknown,
+                 logo: String = unknown,
+                 winner: Boolean = false
                )
 
 case class League(
@@ -174,10 +174,10 @@ case class Players1(
                    )
 
 case class Score(
-                  halftime: Teams = Teams(),
-                  fulltime: Teams = Teams(),
-                  extratime: Teams = Teams(),
-                  penalty: Teams  = Teams()
+                  halftime: Goals1 = Goals1(),
+                  fulltime: Goals1 = Goals1(),
+                  extratime: Goals1 = Goals1(),
+                  penalty: Goals1  = Goals1()
                 )
 
 case class Shots(
@@ -246,8 +246,13 @@ case class Team2(
                 )
 
 case class Teams(
-                  home: String = unknown,
-                  away: String = unknown
+                  home: Home = Home(),
+                  away: Home = Home()
+                )
+
+case class Goals1(
+                        home: Int = 0,
+                        away: Int = 0,
                 )
 
 case class Time(
