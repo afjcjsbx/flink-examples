@@ -1,12 +1,10 @@
-package com.afjcjsbx.window;
+package com.afjcjsbx.windoweventtime;
 
 import java.io.IOException;
 import java.util.Random;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.net.ServerSocket;
-import java.util.Date;
-import java.sql.Timestamp;
 
 public class DataServer {
 

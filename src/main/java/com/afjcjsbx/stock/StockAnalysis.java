@@ -1,5 +1,6 @@
 package com.afjcjsbx.stock;
 
+import org.apache.flink.api.common.JobExecutionResult;
 import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.api.common.eventtime.SerializableTimestampAssigner;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
@@ -26,7 +27,19 @@ import java.text.SimpleDateFormat;
 
 public class StockAnalysis {
 
+    public StockAnalysis() {}
+
+    /**
+     * Main method.
+     *
+     * @throws Exception which occurs during job execution.
+     */
     public static void main(String[] args) throws Exception {
+        StockAnalysis job = new StockAnalysis();
+        job.execute();
+    }
+
+    public JobExecutionResult execute() throws Exception {
 
         Configuration conf = new Configuration();
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
@@ -82,9 +95,9 @@ public class StockAnalysis {
                 new SimpleStringEncoder<String>("UTF-8")).build();
         largeDelta.addSink(alertSink);
 
-
-        env.execute("Stock Analysis");
+        return env.execute("Stock Analysis");
     }
+
 
     public static class TrackChange extends ProcessWindowFunction<Tuple5<String, String, String, Double, Integer>, String, String, TimeWindow> {
         private transient ValueState<Double> prevWindowMaxTrade;
