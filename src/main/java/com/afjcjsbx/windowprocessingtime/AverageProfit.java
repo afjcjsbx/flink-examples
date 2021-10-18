@@ -29,7 +29,7 @@ public class AverageProfit {
 
         StreamingFileSink<Tuple5<String, String, String, Integer, Integer>> report = StreamingFileSink.forRowFormat(new Path("src/main/resources/www.txt"),
                 new SimpleStringEncoder<Tuple5<String, String, String, Integer, Integer>>("UTF-8")).build();
-        mapped.addSink(report).setParallelism(1);
+        reduced.addSink(report).setParallelism(1);
 
         // execute program
         env.execute("Avg Profit Per Month");
