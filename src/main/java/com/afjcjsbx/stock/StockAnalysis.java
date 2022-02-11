@@ -10,6 +10,8 @@ import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
@@ -24,10 +26,12 @@ import org.apache.flink.util.Collector;
 
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class StockAnalysis {
 
-    public StockAnalysis() {}
+    public StockAnalysis() {
+    }
 
     /**
      * Main method.
@@ -51,41 +55,43 @@ public class StockAnalysis {
         env.setRuntimeMode(RuntimeExecutionMode.STREAMING);
 
 
-        class MyTimestampAssigner implements SerializableTimestampAssigner<Tuple5<String, String, String, Double, Integer>> {
-            private final SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+        class MyTimestampAssigner implements SerializableTimestampAssigner<Tuple3<String, Long, Double>> {
+            //private final SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
 
             @Override
-            public long extractTimestamp(Tuple5<String, String, String, Double, Integer> value, long l) {
+            public long extractTimestamp(Tuple3<String, Long, Double> value, long l) {
                 try {
-                    Timestamp ts = new Timestamp(sdf.parse(value.f0 + " " + value.f1).getTime());
-
-                    return ts.getTime();
+                    //Timestamp ts = new Timestamp(sdf.parse(value.f0 + " " + value.f1).getTime());
+                    return value.f1;
                 } catch (Exception e) {
                     throw new java.lang.RuntimeException("Parsing Error");
                 }
             }
         }
 
-        DataStream<Tuple5<String, String, String, Double, Integer>> data = env.readTextFile("src/main/resources/FUTURES_TRADES.txt")
-                .map(new MapFunction<String, Tuple5<String, String, String, Double, Integer>>() {
-                    public Tuple5<String, String, String, Double, Integer> map(String value) {
-                        String[] words = value.split(",");
-                        // date,    time,     Name,       trade,                      volume
-                        return new Tuple5<>(words[0], words[1], "XYZ", Double.parseDouble(words[2]), Integer.parseInt(words[3]));
-                    }
-                })
-                .assignTimestampsAndWatermarks(WatermarkStrategy.<Tuple5<String, String, String, Double, Integer>>forMonotonousTimestamps()
+        DataStream<String> data = env.socketTextStream("localhost", 9090);
+
+        DataStream<Tuple3<String, Long, Double>> sum = data.map(new MapFunction<String, Tuple3<String, Long, Double>>() {
+            public Tuple3<String, Long, Double> map(String s) {
+                String[] words = s.split(",");
+                return new Tuple3<>(words[0], Long.parseLong(words[1]), Double.parseDouble(words[2]));
+            }
+        });
+
+        DataStream<Tuple3<String, Long, Double>> dataAssigned = sum
+                .assignTimestampsAndWatermarks(WatermarkStrategy.<Tuple3<String, Long, Double>>forMonotonousTimestamps()
                         .withTimestampAssigner(new MyTimestampAssigner()));
 
         // Compute per window statistics
-        DataStream<String> change = data.keyBy((KeySelector<Tuple5<String, String, String, Double, Integer>, String>) value -> value.f2)
-                .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+        DataStream<String> change = dataAssigned.keyBy((KeySelector<Tuple3<String, Long, Double>, String>) value -> value.f0)
+                .window(TumblingEventTimeWindows.of(Time.seconds(30)))
                 .process(new TrackChange());
 
         StreamingFileSink<String> firstReportSink = StreamingFileSink.forRowFormat(new Path("src/main/resources/Report.txt"),
                 new SimpleStringEncoder<String>("UTF-8")).build();
         change.addSink(firstReportSink);
 
+        /*
         // Alert when price change from one window to another is more than threshold
         DataStream<String> largeDelta = data.keyBy((KeySelector<Tuple5<String, String, String, Double, Integer>, String>) value -> value.f2)
                 .window(TumblingEventTimeWindows.of(Time.minutes(5)))
@@ -95,67 +101,57 @@ public class StockAnalysis {
                 new SimpleStringEncoder<String>("UTF-8")).build();
         largeDelta.addSink(alertSink);
 
+         */
         return env.execute("Stock Analysis");
     }
 
 
-    public static class TrackChange extends ProcessWindowFunction<Tuple5<String, String, String, Double, Integer>, String, String, TimeWindow> {
+    public static class TrackChange extends ProcessWindowFunction<Tuple3<String, Long, Double>, String, String, TimeWindow> {
         private transient ValueState<Double> prevWindowMaxTrade;
-        private transient ValueState<Integer> prevWindowMaxVol;
 
-        public void process(String key, Context context, Iterable<Tuple5<String, String, String, Double, Integer>> input, Collector<String> out) throws Exception {
-            String windowStart = "";
-            String windowEnd = "";
+        public void process(String key, Context context, Iterable<Tuple3<String, Long, Double>> input, Collector<String> out) throws Exception {
+            Long windowStart = 0L;
+            Long windowEnd = 0L;
             Double windowMaxTrade = 0.0;
             Double windowMinTrade = 0.0;
-            Integer windowMaxVol = 0;
-            Integer windowMinVol = 0;
 
             if (prevWindowMaxTrade.value() == null) prevWindowMaxTrade.update(0.0);
-            if (prevWindowMaxVol.value() == null) prevWindowMaxVol.update(0);
 
-            for (Tuple5<String, String, String, Double, Integer> element : input) {
-                if (windowStart.isEmpty()) {
-                    windowStart = element.f0 + ":" + element.f1;
-                    windowMinTrade = element.f3;
-                    windowMinVol = element.f4;
+            for (Tuple3<String, Long, Double> element : input) {
+                if (windowStart == 0L) {
+                    windowStart = element.f1;
+                    windowMinTrade = element.f2;
                 }
-                if (element.f3 > windowMaxTrade)
-                    windowMaxTrade = element.f3;
+                if (element.f2 > windowMaxTrade)
+                    windowMaxTrade = element.f2;
 
-                if (element.f3 < windowMinTrade)
-                    windowMinTrade = element.f3;
+                if (element.f2 < windowMinTrade)
+                    windowMinTrade = element.f2;
 
-                if (element.f4 > windowMaxVol)
-                    windowMaxVol = element.f4;
-                if (element.f4 < windowMinVol)
-                    windowMinVol = element.f4;
 
-                windowEnd = element.f0 + ":" + element.f1;
+                windowEnd = element.f1;
             }
 
             double maxTradeChange = 0.0;
-            double maxVolChange = 0.0;
 
             if (prevWindowMaxTrade.value() != 0) {
                 maxTradeChange = ((windowMaxTrade - prevWindowMaxTrade.value()) / prevWindowMaxTrade.value()) * 100;
             }
-            if (prevWindowMaxVol.value() != 0)
-                maxVolChange = ((windowMaxVol - prevWindowMaxVol.value()) * 1.0 / prevWindowMaxVol.value()) * 100;
 
-            String output = windowStart + " - " + windowEnd + ", " + windowMaxTrade + ", " + windowMinTrade + ", " + String.format("%.2f", maxTradeChange)
-                    + ", " + windowMaxVol + ", " + windowMinVol + ", " + String.format("%.2f", maxVolChange);
+            Timestamp windowMinTradeDate = new Timestamp(windowStart);
+            Timestamp windowMaxTradeDate = new Timestamp(windowEnd);
+
+            String output = new Date(windowMinTradeDate.getTime()) + " - " + new Date(windowMaxTradeDate.getTime()) + ", "
+                    + windowMinTrade + ", " + windowMaxTrade + ", " + String.format("%.2f", maxTradeChange);
 
             out.collect(output);
             System.out.println(output);
 
             prevWindowMaxTrade.update(windowMaxTrade);
-            prevWindowMaxVol.update(windowMaxVol);
         }
 
         public void open(Configuration config) {
             prevWindowMaxTrade = getRuntimeContext().getState(new ValueStateDescriptor<>("prev_max_trade", BasicTypeInfo.DOUBLE_TYPE_INFO));
-            prevWindowMaxVol = getRuntimeContext().getState(new ValueStateDescriptor<>("prev_max_vol", BasicTypeInfo.INT_TYPE_INFO));
         }
     }
 
