@@ -21,7 +21,7 @@ public class DataServer {
 				try {
 					PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
 
-					final String SYMBOL = "BTC-EUR";
+					final String SYMBOL = "FTNT";
 					//Date d = new Date();
 					while (true){
 						Stock stock = YahooFinance.get(SYMBOL);
