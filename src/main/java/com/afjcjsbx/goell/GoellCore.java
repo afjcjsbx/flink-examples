@@ -1,23 +1,53 @@
-package com.afjcjsbx.windowprocessingtime;
+package com.afjcjsbx.goell;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.serialization.SimpleStringEncoder;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.tuple.Tuple5;
+import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.filesystem.StreamingFileSink;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
 
-public class AverageProfit {
+public class GoellCore {
+
+    private static String kafkaBrokers = "192.168.99.100:9092";
 
     public static void main(String[] args) throws Exception {
         // set up the streaming execution environment
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        DataStream<String> data = env.socketTextStream("localhost", 9090);
+        KafkaSource<String> source = KafkaSource.<String>builder()
+                .setBootstrapServers(kafkaBrokers)
+                .setTopics("input-topic")
+                .setGroupId("my-group")
+                .setStartingOffsets(OffsetsInitializer.earliest())
+                .setValueOnlyDeserializer(new SimpleStringSchema())
+                .build();
+
+        DataStreamSource<String> events = env.fromSource(source, WatermarkStrategy.noWatermarks(), "Kafka Source")
+                .map(new MapFunction<String, NewMatch>() {
+                    ObjectMapper mapper = new ObjectMapper();
+                    JSONParser parser = new JSONParser();
+
+                    @Override
+                    public NewMatch map(String rawData) throws Exception {
+                        JsonNode actualObj = mapper.readTree(rawData);
+                        JsonNode jsonNode1 = actualObj.get("response");
+                        JSONArray json = (JSONArray) parser.parse(jsonNode1.toString());
+                        NewMatch m = MatchParser.parseMatchFromExternal(json.get(0).toString());
+                        return m;
+                    }
+                })
 
         // month, product, category, profit, count
         DataStream<Tuple5<String, String, String, Integer, Integer>> mapped = data.map(new Splitter());      // tuple  [June,Category5,Bat,12,1]

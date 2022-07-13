@@ -1,13 +1,9 @@
 package com.afjcjsbx.goell;
 
-import org.apache.flink.api.common.functions.FlatMapFunction;
-import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
-import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.util.Collector;
 import org.apache.http.HttpException;
 import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
@@ -49,41 +45,8 @@ public class HttpRequestCount {
         // get input data by connecting to the socket
         DataStream<String> text = env.addSource(new OneHourHttpTextStreamFunction(path, port));
 
-        // parse the data, group it, window it, and aggregate the counts
-        DataStream<WordWithCount> windowCounts = text
-
-                .flatMap(new FlatMapFunction<String, WordWithCount>() {
-                    @Override
-                    public void flatMap(String value, Collector<WordWithCount> out) {
-                        try {
-                            Thread.sleep(1000);
-                        } catch (InterruptedException e) {
-                            // TODO Auto-generated catch block
-                            e.printStackTrace();
-                        }
-                        for (String word : value.split("\\s")) {
-                            out.collect(new WordWithCount(word, 1L));
-                        }
-                    }
-                })
-
-                .keyBy("word").timeWindow(Time.seconds(5))
-
-                .reduce(new ReduceFunction<WordWithCount>() {
-                    @Override
-                    public WordWithCount reduce(WordWithCount a, WordWithCount b) {
-                        try {
-                            Thread.sleep(1000);
-                        } catch (InterruptedException e) {
-                            // TODO Auto-generated catch block
-                            e.printStackTrace();
-                        }
-                        return new WordWithCount(a.word, a.count + b.count);
-                    }
-                });
-
         // print the results with a single thread, rather than in parallel
-        windowCounts.print().setParallelism(1);
+        text.print().setParallelism(1);
 
         env.execute("Http Request Count");
     }
@@ -109,8 +72,8 @@ class OneHourHttpTextStreamFunction implements SourceFunction<String> {
 
     @Override
     public void run(SourceContext<String> ctx) throws Exception {
-        server = ServerBootstrap.bootstrap().setListenerPort(port).registerHandler(path, new HttpRequestHandler(){
-.
+        server = ServerBootstrap.bootstrap().setListenerPort(port).registerHandler(path, new HttpRequestHandler() {
+
             @Override
             public void handle(HttpRequest req, HttpResponse rep, HttpContext context) throws HttpException, IOException {
                 ctx.collect(req.getRequestLine().getUri());

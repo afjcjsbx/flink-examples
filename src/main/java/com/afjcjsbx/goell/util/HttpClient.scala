@@ -8,6 +8,7 @@ import java.util
 object HttpClient {
 
   val NEW_URL_MATCH_BY_ID_V3 = "https://v3.football.api-sports.io/fixtures?id=${id}&timezone=${timezone}"
+  val NEW_URL_MATCHES_BY_DATE_V3 = "https://v3.football.api-sports.io/fixtures?date=${date}&timezone=${timezone}"
   val DEFAULT_TIME_ZONE = "Europe/Rome"
 
   def sendGet(url: String): String = {
